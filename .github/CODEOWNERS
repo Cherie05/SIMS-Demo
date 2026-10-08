@@ -1,0 +1,13 @@
+# Reviews required by branch protection on main (see docs/governance/engineering-standards.md).
+# Replace @arunvpp with your team handles, e.g. @company/sims-backend.
+*                                   @arunvpp
+
+# Security-sensitive areas need a security reviewer as well
+/backend/app/core/                  @arunvpp
+/backend/app/api/deps.py            @arunvpp
+/backend/app/services/session_service.py @arunvpp
+/backend/app/services/mfa_service.py     @arunvpp
+/backend/alembic/versions/          @arunvpp
+/docker-compose*.yml                @arunvpp
+/docker/                            @arunvpp
+/.github/                           @arunvpp

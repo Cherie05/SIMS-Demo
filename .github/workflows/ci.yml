@@ -1,0 +1,263 @@
+# Continuous integration: every push and pull request.
+#   lint -> type check -> unit/integration tests -> security scans (SAST, secrets, dependencies, IaC)
+#   -> container build + vulnerability scan + SBOM -> end-to-end acceptance + DAST (OWASP ZAP)
+# Actions are pinned to full commit SHAs (supply chain); Dependabot keeps them current.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "22"
+
+jobs:
+  infrastructure:
+    name: Deployment configuration and scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate merged development, production and monitoring configuration
+        run: python ops/check-infrastructure.py
+      - name: Verify release order, startup failure and rollback
+        run: python ops/test-deploy.py
+      - name: Verify encrypted backup, restore and tamper rejection
+        run: bash ops/test-backup.sh
+      - name: Shell lint
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y shellcheck
+          shellcheck backend/docker-entrypoint.sh ops/*.sh docker/backup/*.sh docker/mysql/provision/*.sh
+
+  backend:
+    name: Backend (lint, types, tests, scans)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mysql:
+        image: mysql:8.4.11
+        env:
+          MYSQL_ROOT_PASSWORD: root_password
+          MYSQL_DATABASE: sims_test
+          MYSQL_USER: sims
+          MYSQL_PASSWORD: sims_password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot_password"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Prepare test databases
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot_password <<'SQL'
+          SET PERSIST log_bin_trust_function_creators = ON;
+          CREATE DATABASE IF NOT EXISTS sims_migrations CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL PRIVILEGES ON sims_test.* TO 'sims'@'%';
+          GRANT ALL PRIVILEGES ON sims_migrations.* TO 'sims'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+      - name: Install (hash-locked runtime + dev tools)
+        run: |
+          pip install --require-hashes --no-deps -r requirements.txt
+          pip install -r requirements-dev.txt pip-audit==2.10.1 bandit==1.9.4
+      - name: Lint and format
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type check
+        run: mypy app scripts
+      - name: Tests (unit, integration, migrations, API contract) with coverage gate
+        run: pytest -q --cov=app --cov-report=term --cov-report=xml
+      - name: Dependency vulnerabilities (pip-audit)
+        run: pip-audit -r requirements.txt --require-hashes --disable-pip
+      - name: Static security analysis (bandit)
+        run: bandit -q -r app scripts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 14
+
+  frontend:
+    name: Frontend (lint, types, tests, build, budget)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: Performance budget (bundle size)
+        run: npm run size
+      - name: Dependency vulnerabilities (npm audit)
+        run: npm audit --audit-level=high
+
+  security:
+    name: Security scans (secrets, SAST, IaC)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # secret scanning covers the whole history
+      - name: Secret scanning (Gitleaks)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 \
+            git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+      - name: SAST (Semgrep)
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1.179.0 semgrep scan \
+            --config p/default --config p/owasp-top-ten --config p/python --config p/typescript \
+            --config p/dockerfile --metrics=off --error --sarif --output /src/semgrep.sarif /src
+      - name: Infrastructure as code (Trivy config scan of Dockerfiles and Compose files)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+      - name: Dependency review (licences and new vulnerabilities in the PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-3.0-only, GPL-3.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always() && hashFiles('semgrep.sarif') != ''
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  images:
+    name: Container images (build, vulnerability scan, SBOM)
+    needs: [backend, frontend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.component }}
+          load: true
+          tags: sims-${{ matrix.component }}:ci
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      - name: Vulnerability scan (fails on fixable critical/high)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: sims-${{ matrix.component }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: SBOM (SPDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: sims-${{ matrix.component }}:ci
+          format: spdx-json
+          artifact-name: sbom-${{ matrix.component }}.spdx.json
+
+  e2e:
+    name: End-to-end acceptance (PDF brief) + DAST
+    needs: [backend, frontend, infrastructure]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: e2e/requirements.txt
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install browser accessibility tools
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Start the stack
+        env:
+          GRAFANA_ADMIN_PASSWORD: ci-only-not-a-production-secret
+        run: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build --wait --wait-timeout 300
+      - name: Monitoring runtime smoke checks
+        run: |
+          curl --fail --silent http://127.0.0.1:9090/-/ready
+          curl --fail --silent http://127.0.0.1:3001/api/health
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium firefox webkit
+      - name: Acceptance suite (Chromium)
+        working-directory: e2e
+        run: python -m pytest
+      - name: Acceptance suite (Firefox, WebKit)
+        working-directory: e2e
+        run: |
+          E2E_BROWSER=firefox python -m pytest test_acceptance.py
+          E2E_BROWSER=webkit python -m pytest test_acceptance.py
+      - name: DAST (OWASP ZAP baseline)
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
+        with:
+          target: http://localhost:3000
+          rules_file_name: .zap/rules.tsv
+          allow_issue_writing: false
+          fail_action: true
+      - name: Logs on failure
+        if: failure()
+        env:
+          GRAFANA_ADMIN_PASSWORD: ci-only-not-a-production-secret
+        run: docker compose -f docker-compose.yml -f docker-compose.observability.yml logs --no-color --tail 300
+      - name: Stop
+        if: always()
+        env:
+          GRAFANA_ADMIN_PASSWORD: ci-only-not-a-production-secret
+        run: docker compose -f docker-compose.yml -f docker-compose.observability.yml down -v --remove-orphans

@@ -1,0 +1,5 @@
+# Same rules as the backend; conftest is this suite's own module.
+extend = "../backend/pyproject.toml"
+
+[lint.isort]
+known-first-party = ["conftest"]

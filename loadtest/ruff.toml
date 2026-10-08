@@ -1,0 +1,5 @@
+# Same rules as the backend; conftest comes from the e2e suite (prepare.py reuses its sign-in helpers).
+extend = "../backend/pyproject.toml"
+
+[lint.isort]
+known-first-party = ["conftest"]

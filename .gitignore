@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs, e.g. the API's output saved for the end-to-end tests
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Production secrets for docker-compose.prod.yml
+production.env
+
+# Database backups (encrypted, but never in git)
+backups/
+
+# Load-test credentials (short-lived tokens) and results
+loadtest/.data/
+
+# Local QA renders, browser screenshots and generated reports
+tmp/
+e2e/test-results/
+frontend/coverage/
+backend/coverage.xml
+backend/.coverage
+
+# Personal Loom recording notes
+/LOOM_VIDEO_SCRIPT.md

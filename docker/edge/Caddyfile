@@ -1,0 +1,38 @@
+# TLS edge in front of the web container.
+#   SITE_ADDRESS=sims.example.com   public domain: Let's Encrypt certificate, renewed automatically
+#   SITE_ADDRESS=localhost:3443     local test: certificate from Caddy's internal CA
+#   SITE_ADDRESS=:80                behind another TLS-terminating load balancer (no certificates here)
+#   Certificate expiry notices: add  email you@company.com  to the global options below.
+{
+	admin off
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+		-Via
+	}
+
+	log {
+		output stdout
+		# The web/API logs already retain paths without queries. Avoid leaking search terms,
+		# personal data or URL credentials through the edge's full request URI.
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+			}
+		}
+	}
+
+	reverse_proxy frontend:8080 {
+		# One id per request, created here at the edge and carried through nginx, the API and the worker.
+		header_up X-Request-ID {http.request.uuid}
+		# Caddy ignores client-sent X-Forwarded-For (no trusted proxies) and sends the real client IP.
+		health_uri /healthz
+		health_interval 15s
+	}
+}

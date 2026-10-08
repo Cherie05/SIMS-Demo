@@ -1,0 +1,103 @@
+# Alert rules. Each maps to an SLO or a runbook entry in docs/operations/runbook.md (see "runbook").
+groups:
+  - name: sims-slo
+    rules:
+      - alert: ApiDown
+        expr: up{job="sims-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "API instance {{ $labels.instance }} is down"
+          runbook: "runbook.md#api-down"
+
+      - alert: HighErrorRate
+        # SLO: fewer than 0.1% of requests fail with a server error (5xx)
+        expr: |
+          sum(rate(sims_http_requests_total{status_class="5xx"}[5m]))
+            / clamp_min(sum(rate(sims_http_requests_total[5m])), 1e-9) > 0.01
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "More than 1% of API requests are failing (5xx)"
+          runbook: "runbook.md#high-error-rate"
+
+      - alert: HighLatencyP95
+        # SLO: p95 latency below 500 ms
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(sims_http_request_duration_seconds_bucket{route!~"/metrics|/health.*"}[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "API p95 latency above 500 ms"
+          runbook: "runbook.md#slow-responses"
+
+  - name: sims-worker
+    rules:
+      - alert: WorkerNotRunning
+        expr: absent(sims_worker_last_heartbeat_timestamp_seconds) or (time() - max(sims_worker_last_heartbeat_timestamp_seconds) > 120)
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "No background worker heartbeat: emails are not being sent"
+          runbook: "runbook.md#worker-down"
+
+      - alert: JobsDeadLettered
+        expr: max(sims_jobs_backlog{state="DEAD"}) > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} background job(s) failed permanently (dead-letter)"
+          runbook: "runbook.md#dead-letter-jobs"
+
+      - alert: JobsBacklogGrowing
+        expr: max(sims_jobs_backlog{state="PENDING"}) + max(sims_jobs_backlog{state="RETRY"}) > 100
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 100 emails waiting to be sent"
+          runbook: "runbook.md#email-backlog"
+
+  - name: sims-security
+    rules:
+      - alert: SignInFailureSpike
+        expr: sum(rate(sims_auth_events_total{outcome="failure"}[5m])) * 60 > 30
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 30 failed sign-in steps per minute (credential stuffing?)"
+          runbook: "runbook.md#sign-in-attack"
+
+      - alert: RateLimitingActive
+        expr: sum(rate(sims_rate_limited_total[5m])) * 60 > 60
+        for: 10m
+        labels: { severity: info }
+        annotations:
+          summary: "Rate limits are refusing more than 60 requests per minute"
+          runbook: "runbook.md#sign-in-attack"
+
+      - alert: RedisDegraded
+        expr: sum(increase(sims_dependency_errors_total{dependency="redis"}[5m])) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Valkey/Redis unreachable: rate limits have fallen back to per-instance memory"
+          runbook: "runbook.md#redis-degraded"
+
+  - name: sims-experience
+    rules:
+      - alert: BrowserErrorSpike
+        expr: sum(rate(sims_client_errors_total[10m])) * 60 > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Browsers are reporting more than 5 JavaScript errors per minute"
+          runbook: "runbook.md#browser-errors"
+
+      - alert: SlowPageLoads
+        # Core Web Vitals: LCP p75 should stay under 2.5 s
+        expr: histogram_quantile(0.75, sum by (le) (rate(sims_web_vitals_bucket{name="LCP"}[30m]))) > 2500
+        for: 30m
+        labels: { severity: info }
+        annotations:
+          summary: "Largest Contentful Paint p75 above 2.5 s"
+          runbook: "runbook.md#slow-responses"

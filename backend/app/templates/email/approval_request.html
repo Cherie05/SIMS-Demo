@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Approval required: {{ order.order_number }}{% endblock %}
+{% block content %}
+<p style="margin:0 0 12px;">Hello {{ recipient.name }},</p>
+<p style="margin:0 0 12px;">
+  Sales order <strong>{{ order.order_number }}</strong> totals
+  <strong>{{ "{:,.2f}".format(order.total_amount) }}</strong>, which exceeds the approval threshold of
+  <strong>{{ "{:,.2f}".format(order.approval.threshold_amount) }}</strong>. It needs your approval before it can be confirmed.
+</p>
+
+{% include "_order_summary.html" %}
+
+{% if order.notes %}
+<p style="margin:0 0 16px;font-size:14px;"><strong>Notes:</strong> {{ order.notes }}</p>
+{% endif %}
+
+<p style="margin:24px 0;">
+  <a href="{{ order_url }}" style="background:#1e3a5f;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;display:inline-block;">
+    Review order
+  </a>
+</p>
+<p style="margin:0;font-size:13px;color:#6b7280;">You can also see all pending approvals at <a href="{{ approvals_url }}">{{ approvals_url }}</a>.</p>
+{% endblock %}

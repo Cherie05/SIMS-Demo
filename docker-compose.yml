@@ -1,0 +1,235 @@
+name: sims
+
+# Default stack = local review/demo: demo data, Mailpit inbox, API docs, ports published to the host.
+# Production: layer docker-compose.prod.yml on top (README "Production deployment"); monitoring:
+# add docker-compose.observability.yml.
+#
+#   browser ──► frontend (nginx: SPA + /api proxy) ──► backend (FastAPI, N replicas)
+#                                                         │            │
+#                               worker (outbox, emails) ──┤            ├──► redis (Valkey: rate limits)
+#                                                         └──► mysql ◄─┘
+#   migrate (one-shot, schema owner) and db-init (one-shot, least-privilege accounts) run first.
+#
+# Every container runs with a read-only root filesystem, no Linux capabilities (MySQL keeps the few
+# its entrypoint needs), no privilege escalation, resource limits and rotated logs.
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+x-backend-image: &backend-image
+  build:
+    context: ./backend
+    args: { APP_VERSION: "${APP_VERSION:-1.1.0}" }
+  image: ${BACKEND_IMAGE:-sims-backend:local}
+
+# The API and the worker connect as sims_app (data only, no DDL).
+x-backend-env: &backend-env
+  ENVIRONMENT: development
+  APP_VERSION: ${APP_VERSION:-1.1.0}
+  DATABASE_URL: mysql+pymysql://sims_app@mysql:3306/sims
+  DATABASE_PASSWORD: ${MYSQL_APP_PASSWORD:-sims_app_dev_password}
+  REDIS_URL: redis://redis:6379/0
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-valkey_dev_password}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-docker-dev-secret-change-me}
+  SMTP_HOST: mailpit
+  SMTP_PORT: 1025
+  FRONTEND_URL: http://localhost:${FRONTEND_PORT:-3000}
+  CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000},http://localhost:5173
+  # 0 disables a limit (load tests from a single machine); see docs/operations/performance.md
+  API_RATE_LIMIT_PER_IP_PER_MINUTE: ${API_RATE_LIMIT_PER_IP_PER_MINUTE:-1200}
+  API_RATE_LIMIT_PER_USER_PER_MINUTE: ${API_RATE_LIMIT_PER_USER_PER_MINUTE:-600}
+
+services:
+  mysql:
+    image: mysql:8.4.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: sims
+      MYSQL_USER: sims
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sims_password}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # migrations create triggers (append-only audit log) while binary logging is on
+      - --log-bin-trust-function-creators=ON
+      # binary logs for point-in-time recovery, kept 7 days
+      - --binlog-expire-logs-seconds=604800
+      - --max-connections=200
+      - --skip-name-resolve
+      - --local-infile=OFF
+      - --slow-query-log=ON
+      - --long-query-time=1
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP login (not the socket) so the check only passes once initialisation has fully finished
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" -e 'SELECT 1' > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    read_only: true
+    tmpfs: [/tmp, /var/run/mysqld, /var/lib/mysql-files]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # the image's entrypoint fixes ownership and drops to the mysql user
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 1g, pids: 256 }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    networks: [data]
+
+  # One-shot: least-privilege database accounts (idempotent; re-applies passwords on every start).
+  db-init:
+    image: mysql:8.4.11
+    entrypoint: ["/bin/sh", "/provision/provision-users.sh"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_MIGRATION_PASSWORD: ${MYSQL_PASSWORD:-sims_password}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-sims_app_dev_password}
+      MYSQL_BACKUP_PASSWORD: ${MYSQL_BACKUP_PASSWORD:-sims_backup_dev_password}
+      MYSQL_RESTORE_PASSWORD: ${MYSQL_RESTORE_PASSWORD:-sims_restore_dev_password}
+    volumes:
+      - ./docker/mysql/provision:/provision:ro
+    depends_on:
+      mysql: { condition: service_healthy }
+    <<: *hardened
+    restart: "no"
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m, pids: 64 }
+    networks: [data]
+
+  # Shared rate-limit state for every API replica. No persistence: counters are short-lived.
+  redis:
+    image: valkey/valkey:9.1.2-alpine
+    user: "999:1000"
+    command: ["sh", "-c", "exec valkey-server --requirepass \"$$REDIS_PASSWORD\" --save '' --appendonly no --maxmemory 64mb --maxmemory-policy allkeys-lru"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-valkey_dev_password}
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    <<: *hardened
+    tmpfs: [/data, /tmp]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m, pids: 256 }
+    networks: [data]
+
+  # Local SMTP server that captures every email. Inbox UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+    networks: [egress]
+
+  # One-shot release step: schema migrations as the schema owner (+ demo data in this stack).
+  migrate:
+    <<: [*hardened, *backend-image]
+    command: ["migrate"]
+    restart: "no"
+    environment:
+      ENVIRONMENT: development
+      SEED_DEMO_DATA: "true"
+      DATABASE_URL: mysql+pymysql://sims@mysql:3306/sims
+      DATABASE_PASSWORD: ${MYSQL_PASSWORD:-sims_password}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-docker-dev-secret-change-me}
+    tmpfs: [/tmp]
+    healthcheck: { disable: true }
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512m, pids: 128 }
+    depends_on:
+      db-init: { condition: service_completed_successfully }
+    networks: [data]
+
+  backend:
+    <<: [*hardened, *backend-image]
+    init: true
+    environment: *backend-env
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    tmpfs: [/tmp]
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512m, pids: 256 }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    networks: [app, data]
+
+  # Background worker: emails from the transactional outbox (retries, dead-letter), housekeeping.
+  worker:
+    <<: [*hardened, *backend-image]
+    command: ["worker"]
+    init: true
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: sims-worker
+      # metrics for Prometheus (monitoring overlay), on the private Docker network only
+      WORKER_METRICS_HOST: 0.0.0.0
+    tmpfs: [/tmp]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/sims-worker-heartbeat') < 90 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m, pids: 256 }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    networks: [data, egress]
+
+  frontend:
+    <<: *hardened
+    build:
+      context: ./frontend
+      args: { APP_VERSION: "${APP_VERSION:-1.1.0}" }
+    image: ${FRONTEND_IMAGE:-sims-frontend:local}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:8080"
+    # nginx renders its config template into conf.d at start-up
+    tmpfs: ["/tmp:uid=101,gid=101", "/etc/nginx/conf.d:uid=101,gid=101"]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m, pids: 256 }
+    depends_on:
+      backend: { condition: service_healthy }
+    networks: [edge, app]
+
+networks:
+  # The production overlay makes app and data internal (no route to the internet).
+  edge: {}
+  app: {}
+  data: {}
+  egress: {}
+
+volumes:
+  mysql_data:

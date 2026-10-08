@@ -1,0 +1,35 @@
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;font-size:14px;">
+  <tr><td style="padding:4px 0;color:#6b7280;width:140px;">Order</td><td style="padding:4px 0;font-weight:600;">{{ order.order_number }}</td></tr>
+  <tr><td style="padding:4px 0;color:#6b7280;">Customer</td><td style="padding:4px 0;">{{ order.customer.name }}</td></tr>
+  <tr><td style="padding:4px 0;color:#6b7280;">Created by</td><td style="padding:4px 0;">{{ order.created_by.name }} ({{ order.created_by.email }})</td></tr>
+  <tr><td style="padding:4px 0;color:#6b7280;">Total</td><td style="padding:4px 0;font-weight:600;">{{ "{:,.2f}".format(order.total_amount) }}</td></tr>
+</table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+  <tr style="background:#f3f4f6;">
+    <th align="left" style="padding:8px;border-bottom:1px solid #e5e7eb;">Product</th>
+    <th align="right" style="padding:8px;border-bottom:1px solid #e5e7eb;">Qty</th>
+    <th align="right" style="padding:8px;border-bottom:1px solid #e5e7eb;">Unit price</th>
+    <th align="right" style="padding:8px;border-bottom:1px solid #e5e7eb;">Line total</th>
+  </tr>
+  {% for item in order.items %}
+  <tr>
+    <td style="padding:8px;border-bottom:1px solid #f3f4f6;">{{ item.product.name }} <span style="color:#6b7280;">({{ item.product.sku }})</span></td>
+    <td align="right" style="padding:8px;border-bottom:1px solid #f3f4f6;">{{ item.quantity }}</td>
+    <td align="right" style="padding:8px;border-bottom:1px solid #f3f4f6;">{{ "{:,.2f}".format(item.unit_price) }}</td>
+    <td align="right" style="padding:8px;border-bottom:1px solid #f3f4f6;">{{ "{:,.2f}".format(item.line_total) }}</td>
+  </tr>
+  {% endfor %}
+  <tr>
+    <td colspan="3" align="right" style="padding:6px 8px;color:#6b7280;">Subtotal</td>
+    <td align="right" style="padding:6px 8px;">{{ "{:,.2f}".format(order.subtotal) }}</td>
+  </tr>
+  <tr>
+    <td colspan="3" align="right" style="padding:6px 8px;color:#6b7280;">Tax ({{ order.tax_rate }}%)</td>
+    <td align="right" style="padding:6px 8px;">{{ "{:,.2f}".format(order.tax_amount) }}</td>
+  </tr>
+  <tr>
+    <td colspan="3" align="right" style="padding:6px 8px;font-weight:600;">Total</td>
+    <td align="right" style="padding:6px 8px;font-weight:600;">{{ "{:,.2f}".format(order.total_amount) }}</td>
+  </tr>
+</table>

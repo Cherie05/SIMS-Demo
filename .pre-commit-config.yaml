@@ -1,0 +1,35 @@
+# Local guard rails before a commit leaves the laptop:  pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: [--allow-multiple-documents, --unsafe] # compose files use !reset / !override tags
+      - id: check-added-large-files
+        args: [--maxkb=800]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        files: ^(backend|e2e)/
+      - id: ruff-format
+        files: ^(backend|e2e)/
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: frontend lint + format
+        entry: bash -c 'cd frontend && npx eslint . && npx prettier --check src'
+        language: system
+        files: ^frontend/
+        pass_filenames: false

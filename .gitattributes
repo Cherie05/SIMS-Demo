@@ -1,0 +1,9 @@
+# Every text file is stored and checked out with LF line endings (scripts run in Linux containers).
+* text=auto eol=lf
+*.sh text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    system: sims
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # Every API replica (Docker DNS returns one address per container).
+  - job_name: sims-api
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /tmp/sims-metrics-token
+    dns_sd_configs:
+      - names: [backend]
+        type: A
+        port: 8000
+
+  - job_name: sims-worker
+    dns_sd_configs:
+      - names: [worker]
+        type: A
+        port: 9101
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

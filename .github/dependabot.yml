@@ -1,0 +1,57 @@
+# Weekly dependency updates, grouped so they arrive as a few reviewable PRs.
+# Security updates are raised immediately regardless of this schedule. The cooldown skips releases
+# younger than a few days, so a compromised or broken release is usually pulled before we adopt it.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule: { interval: weekly, day: monday }
+    cooldown:
+      default-days: 7
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pip
+    directory: /e2e
+    schedule: { interval: weekly, day: monday }
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday }
+    cooldown:
+      default-days: 7
+    groups:
+      frontend:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /backend
+    schedule: { interval: weekly }
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule: { interval: weekly }
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly }
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

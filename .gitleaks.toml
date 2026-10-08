@@ -1,0 +1,24 @@
+# Secret scanning (Gitleaks). Default rules, plus an allowlist for the public, development-only
+# values that are part of the demo (they are refused in staging/production by the config validator).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Published development defaults and test fixtures - never valid in production"
+regexTarget = "line"
+regexes = [
+  '''docker-dev-secret-change-me''',
+  '''change-me-in-production''',
+  '''(sims|root|sims_app_dev|sims_backup_dev|sims_restore_dev|valkey_dev)_password''',
+  '''(Admin|Manager|Sales)@123''',
+  '''Password@123''',
+  '''E2e-Passw0rd''',
+]
+paths = [
+  '''backend/tests/''',
+  '''e2e/''',
+  '''frontend/src/.*\.test\.tsx?''',
+  '''docs/api/openapi\.json''',
+  '''frontend/package-lock\.json''',
+  '''backend/requirements\.txt''',
+]

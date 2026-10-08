@@ -1,0 +1,179 @@
+# Production overrides, layered on docker-compose.yml:
+#
+#   cp production.env.example production.env      # fill in real values
+#   docker compose --env-file production.env -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   docker compose --env-file production.env -f docker-compose.yml -f docker-compose.prod.yml \
+#       exec backend python -m scripts.create_admin --email you@company.com --name "Your Name"
+#
+# Differences from the demo stack:
+#   - HTTPS at the edge (Caddy: automatic certificates, HTTP->HTTPS redirect, HSTS); only 80/443 are
+#     published. MySQL, Valkey, the API and the worker have no published ports.
+#   - Network segmentation: "app" and "data" are internal networks (no internet access). Only the
+#     edge (ACME) and the worker (SMTP) can reach out.
+#   - Required secrets, no demo data, no API docs, no Mailpit, TLS required for MySQL connections.
+#   - Scheduled, encrypted database backups with an automatic restore check.
+#   - Scale the API with: ... up -d --scale backend=2   (rate limits are shared through Valkey).
+
+x-production-env: &prod-backend-env
+  ENVIRONMENT: production
+  DATABASE_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD}
+  DATABASE_TLS: required
+  REDIS_URL: redis://redis:6379/0
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY}
+  JWT_PREVIOUS_SECRET_KEYS: ${JWT_PREVIOUS_SECRET_KEYS:-}
+  DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:?Set DATA_ENCRYPTION_KEYS}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
+  FRONTEND_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
+  CORS_ORIGINS: ${PUBLIC_URL:?Set PUBLIC_URL}
+  SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  SMTP_SSL: ${SMTP_SSL:-false}
+  MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM}
+  OTP_DELIVERY: ${OTP_DELIVERY:-email}
+  SIGNUP_ENABLED: ${SIGNUP_ENABLED:-false}
+  SIGNUP_ALLOWED_DOMAINS: ${SIGNUP_ALLOWED_DOMAINS:-}
+  SESSION_IDLE_TIMEOUT_MINUTES: ${SESSION_IDLE_TIMEOUT_MINUTES:-30}
+  SESSION_ABSOLUTE_TIMEOUT_HOURS: ${SESSION_ABSOLUTE_TIMEOUT_HOURS:-12}
+
+services:
+  mysql:
+    ports: !reset []
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --log-bin-trust-function-creators=ON
+      - --binlog-expire-logs-seconds=604800
+      - --max-connections=200
+      - --skip-name-resolve
+      - --local-infile=OFF
+      - --slow-query-log=ON
+      - --long-query-time=1
+      # every client connection must be encrypted (MySQL generates its certificates on first start)
+      - --require-secure-transport=ON
+
+  db-init:
+    environment:
+      MYSQL_SSL_MODE: REQUIRED
+      MYSQL_MIGRATION_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:?Set MYSQL_APP_PASSWORD}
+      MYSQL_BACKUP_PASSWORD: ${MYSQL_BACKUP_PASSWORD:?Set MYSQL_BACKUP_PASSWORD}
+      MYSQL_RESTORE_PASSWORD: ${MYSQL_RESTORE_PASSWORD:?Set MYSQL_RESTORE_PASSWORD}
+
+  redis:
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+
+  mailpit:
+    profiles: ["dev-mail"] # never started in production
+
+  migrate:
+    environment:
+      <<: *prod-backend-env
+      SEED_DEMO_DATA: "false"
+      DATABASE_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+
+  backend:
+    ports: !reset []
+    environment: *prod-backend-env
+
+  worker:
+    environment:
+      <<: *prod-backend-env
+      SERVICE_NAME: sims-worker
+
+  frontend:
+    ports: !reset []
+    environment:
+      # X-Forwarded-For is believed only from the TLS edge
+      NGINX_TRUSTED_PROXY: ${EDGE_PROXY_IP:-172.30.250.10}
+
+  # TLS edge: automatic HTTPS (Let's Encrypt for a public domain, a local CA for "localhost"),
+  # HTTP->HTTPS redirect, HSTS, compression, a request id per request, JSON access logs.
+  edge:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?Set SITE_ADDRESS (your domain, e.g. sims.example.com)}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:${HTTPS_LISTEN_PORT:-443}"
+      - "${HTTPS_PORT:-443}:${HTTPS_LISTEN_PORT:-443}/udp"
+    volumes:
+      - ./docker/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m, pids: 256 }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    depends_on:
+      frontend: { condition: service_healthy }
+    networks:
+      edge:
+        ipv4_address: ${EDGE_PROXY_IP:-172.30.250.10}
+
+  # Encrypted logical backups every BACKUP_INTERVAL_SECONDS, each verified by a test restore.
+  backup:
+    image: mysql:8.4.11
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "/scripts/backup-loop.sh"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_SSL_MODE: REQUIRED
+      MYSQL_BACKUP_PASSWORD: ${MYSQL_BACKUP_PASSWORD:?Set MYSQL_BACKUP_PASSWORD}
+      MYSQL_RESTORE_PASSWORD: ${MYSQL_RESTORE_PASSWORD:?Set MYSQL_RESTORE_PASSWORD}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?Set BACKUP_ENCRYPTION_KEY}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./docker/backup:/scripts:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m, pids: 128 }
+    healthcheck:
+      # healthy while the last successful backup is younger than two intervals
+      test: ["CMD-SHELL", "test -f /backups/.last-success && [ $$(( $$(date +%s) - $$(cat /backups/.last-success) )) -lt $$(( BACKUP_INTERVAL_SECONDS * 2 )) ]"]
+      interval: 5m
+      timeout: 10s
+      start_period: 10m
+    depends_on:
+      # the schema must exist before the first backup (and its restore check) runs
+      migrate: { condition: service_completed_successfully }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    networks: [data]
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.30.250.0/24}
+  app:
+    internal: true
+  data:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:

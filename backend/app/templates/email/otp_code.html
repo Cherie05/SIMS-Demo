@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Your verification code{% endblock %}
+{% block content %}
+<p style="margin:0 0 12px;">Hello {{ recipient_name }},</p>
+<p style="margin:0 0 20px;">Use this code to complete your {{ purpose }}:</p>
+<p style="margin:0 0 20px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:Consolas,Menlo,monospace;color:#0f2f2c;">{{ code }}</p>
+<p style="margin:0 0 8px;font-size:14px;color:#4b5563;">It expires in {{ minutes }} minutes and can be used once.</p>
+<p style="margin:0;font-size:13px;color:#6b7280;">If you didn't try to sign in or create an account, you can ignore this email.</p>
+{% endblock %}

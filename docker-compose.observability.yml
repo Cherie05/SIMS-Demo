@@ -1,0 +1,84 @@
+# Monitoring: Prometheus (metrics + alert rules) and Grafana (dashboards), layered on either stack:
+#
+#   demo:        docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#   production:  docker compose --env-file production.env -f docker-compose.yml -f docker-compose.prod.yml \
+#                    -f docker-compose.observability.yml up -d
+#
+# Grafana: http://localhost:3001 (admin / GRAFANA_ADMIN_PASSWORD). Prometheus: http://localhost:9090.
+# Both are bound to 127.0.0.1 - reach them through an SSH tunnel or your VPN, never the internet.
+# Logs are JSON on stdout for every service; ship them with your platform's collector (Loki/ELK/CloudWatch).
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        printf '%s' "$$METRICS_TOKEN" > /tmp/sims-metrics-token
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=15d
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    volumes:
+      - ./docker/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512m, pids: 256 }
+    networks: [app, data, monitoring]
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD for monitoring}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512m, pids: 256 }
+    depends_on:
+      prometheus: { condition: service_healthy }
+    networks: [monitoring]
+
+networks:
+  # A normal bridge is needed for the host's loopback-published dashboards to be reachable.
+  # Access is restricted by the 127.0.0.1 port bindings; application/data networks remain internal.
+  monitoring: {}
+
+volumes:
+  prometheus_data:
+  grafana_data:
