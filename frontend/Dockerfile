@@ -10,7 +10,7 @@ RUN npm run build
 
 # ---------------------------------------------------------------- serve: static files + reverse proxy for /api
 # Unprivileged image: runs as uid 101 on port 8080, so the container needs no capabilities at all.
-FROM nginxinc/nginx-unprivileged:1.30.5-alpine
+FROM nginxinc/nginx-unprivileged:1.31.5-alpine
 ARG APP_VERSION=1.1.0
 LABEL org.opencontainers.image.title="sims-frontend" \
       org.opencontainers.image.description="Sales & Inventory Management System - web app and API proxy" \
