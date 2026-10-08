@@ -7,6 +7,30 @@ brief requires); Valkey (the open-source Redis fork) holds short-lived shared st
 Diagrams are [Mermaid](https://mermaid.js.org) and render on GitHub. Decisions behind them are in
 [../adr](../adr).
 
+## Technology stack
+
+| Technology | Purpose in this project |
+|---|---|
+| React 18 | Builds the browser interface as reusable pages and components |
+| TypeScript | Checks frontend types during development and builds |
+| Vite | Runs the frontend development server and creates production bundles |
+| Material UI | Provides components, styling and responsive layouts |
+| React Hook Form + Zod | Manage form state and validate browser inputs before submission |
+| TanStack Query | Fetches, caches and refreshes server data after changes |
+| Axios | Sends HTTP requests, attaches access tokens and coordinates authentication refresh |
+| FastAPI + Python | Provide the backend REST API and business services |
+| Pydantic | Validates API inputs and defines serialized responses |
+| SQLAlchemy | Maps Python models to MySQL tables and supports queries, transactions and row locks |
+| MySQL | Stores business records, authentication sessions, audit history and queued jobs |
+| Alembic | Versions and upgrades the database schema |
+| Background worker | Processes queued emails, retries and scheduled cleanup |
+| Valkey | Shares rate-limit counters between API instances in Docker |
+| Mailpit | Captures demo emails locally for inspection |
+| Docker Compose | Starts the application and its supporting services together |
+
+The [project walkthrough](../project-walkthrough.md) connects this stack to staff roles,
+customer records, order decisions, inventory history and the recruiter handoff.
+
 ## 1. System context
 
 ```mermaid
