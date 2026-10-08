@@ -17,6 +17,7 @@ A web application for managing products, customers, sales orders and inventory, 
 - [Demo accounts](#demo-accounts)
 - [Requirements coverage](#requirements-coverage)
 - [Features](#features)
+- [Technology stack](#technology-stack)
 - [How the approval workflow works](#how-the-approval-workflow-works)
 - [Architecture](#architecture)
 - [Database design](#database-design)
@@ -38,6 +39,8 @@ Requires Docker Desktop. No Docker? See [Run without Docker](#run-without-docker
 For Windows PowerShell commands for both setups, see [RUN_COMMANDS.md](RUN_COMMANDS.md).
 For repository permissions, security settings and the recruiter submission checklist, see
 [Public repository setup](docs/github-repository-setup.md).
+For the role permissions, customer records and complete sales flow, see
+[Project walkthrough](docs/project-walkthrough.md).
 
 ```bash
 docker compose up --build
@@ -104,6 +107,30 @@ Each requirement in the brief, where it is implemented, and the [acceptance test
 | Validation, error handling, transactions | One error shape, field-level messages, rollbacks, `409`/`422`/`503` | steps 4, 9, plus the backend suite |
 
 ---
+
+## Technology stack
+
+| Technology | Purpose in this project |
+|---|---|
+| React 18 | Builds the browser interface as reusable pages and components |
+| TypeScript | Checks frontend types during development and builds |
+| Vite | Runs the frontend development server and creates production bundles |
+| Material UI | Provides components, styling and responsive layouts |
+| React Hook Form + Zod | Manage form state and validate browser inputs before submission |
+| TanStack Query | Fetches, caches and refreshes server data after changes |
+| Axios | Sends HTTP requests, attaches access tokens and coordinates authentication refresh |
+| FastAPI + Python | Provide the backend REST API and business services |
+| Pydantic | Validates API inputs and defines serialized responses |
+| SQLAlchemy | Maps Python models to MySQL tables and supports queries, transactions and row locks |
+| MySQL | Stores business records, authentication sessions, audit history and queued jobs |
+| Alembic | Versions and upgrades the database schema |
+| Background worker | Processes queued emails, retries and scheduled cleanup |
+| Valkey | Shares rate-limit counters between API instances in Docker |
+| Mailpit | Captures demo emails locally for inspection |
+| Docker Compose | Starts the application and its supporting services together |
+
+See [Architecture](#architecture) for the request path and
+[Project walkthrough](docs/project-walkthrough.md) for how these technologies work together.
 
 ## Features
 
