@@ -15,7 +15,10 @@ password=${RESTORE_DB_PASSWORD:-${MYSQL_RESTORE_PASSWORD:-}}
 [[ "$target" =~ ^[A-Za-z_][A-Za-z0-9_]{0,63}$ ]] || { echo "Target database must be a valid SQL identifier" >&2; exit 2; }
 [[ "$user" =~ ^[A-Za-z_][A-Za-z0-9_]{0,31}$ ]] || { echo "MySQL user must be a valid identifier" >&2; exit 2; }
 [ -n "$password" ] || { echo "A restore database password is required" >&2; exit 2; }
-[ -f "$file" ] && [ -f "$file.hmac" ] || { echo "Backup and HMAC files are required" >&2; exit 2; }
+if [ ! -f "$file" ] || [ ! -f "$file.hmac" ]; then
+  echo "Backup and HMAC files are required" >&2
+  exit 2
+fi
 
 expected=$(cat "$file.hmac")
 actual=$(openssl dgst -sha256 -hmac "$BACKUP_ENCRYPTION_KEY" -r "$file" | cut -d' ' -f1)

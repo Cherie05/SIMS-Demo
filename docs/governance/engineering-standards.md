@@ -2,12 +2,19 @@
 
 ## Repository rules (GitHub settings for `main`)
 
-- Pull requests required; 1 approving review, 2 for paths owned by security in `CODEOWNERS`
-  (auth, sessions, permissions, migrations, infrastructure, CI).
-- Required status checks: `Backend`, `Frontend`, `Security scans`, `Container images`,
-  `End-to-end acceptance`, `CodeQL`. Branch must be up to date; linear history (squash merge).
+- Pull requests required. This public assignment repository has one maintainer, so required
+  approvals are set to 0; the owner cannot approve their own pull requests. All CI checks and
+  conversation resolution remain required, with no bypass actors. `CODEOWNERS` routes review
+  requests to `@Cherie05` and grants no permissions.
+- Required status checks use the exact job names listed in
+  [Public repository setup](../github-repository-setup.md): deployment checks, backend, frontend,
+  security scans, both container images, end-to-end acceptance/DAST and all three CodeQL jobs.
+  Branch must be up to date; linear history (squash merge).
 - No force pushes or deletions; signed commits recommended; secret scanning and push protection on.
 - Dependabot security updates on; version updates weekly with a 7-day cooldown.
+- When another trusted maintainer joins, require at least 1 approval and code-owner review.
+  For a larger security team, consider 2 approvals for sensitive changes. Do not enable these
+  review requirements while the owner is the only person who can review.
 
 ## Definition of done
 

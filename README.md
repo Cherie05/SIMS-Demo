@@ -1,5 +1,8 @@
 # Sales & Inventory Management System (SIMS)
 
+[![CI](https://github.com/Cherie05/SIMS-Demo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cherie05/SIMS-Demo/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Cherie05/SIMS-Demo/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Cherie05/SIMS-Demo/actions/workflows/codeql.yml)
+
 A web application for managing products, customers, sales orders and inventory, with a **manager approval workflow** for high-value orders and **email notifications** at each step.
 
 **Stack:** React 18 + TypeScript (Vite, MUI) · FastAPI · Python 3.11 · SQLAlchemy 2 · MySQL 8 · Alembic · JWT
@@ -33,6 +36,8 @@ A web application for managing products, customers, sales orders and inventory, 
 Requires Docker Desktop. No Docker? See [Run without Docker](#run-without-docker).
 
 For Windows PowerShell commands for both setups, see [RUN_COMMANDS.md](RUN_COMMANDS.md).
+For repository permissions, security settings and the recruiter submission checklist, see
+[Public repository setup](docs/github-repository-setup.md).
 
 ```bash
 docker compose up --build

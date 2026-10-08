@@ -2,8 +2,9 @@
 
 ## Reporting a vulnerability
 
-Please **don't open a public issue**. Email the maintainers at the address in the repository
-profile (or use GitHub's private vulnerability reporting) with:
+Please **don't open a public issue**. Use
+[GitHub private vulnerability reporting](https://github.com/Cherie05/SIMS-Demo/security/advisories/new)
+with:
 
 - what you found and where (URL, endpoint, file),
 - how to reproduce it,
