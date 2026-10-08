@@ -69,6 +69,7 @@ deleted after merge. Automatic merging of dependency updates is disabled.
 | Secret push protection | Enabled |
 | Private vulnerability reporting | Enabled; linked in `SECURITY.md` |
 | Default `GITHUB_TOKEN` permission | Read |
+| Full commit SHA pinning for actions | Required by repository policy |
 | Actions allowed to create/approve PRs | Disabled |
 | Fork workflow approval | Required for all external contributors |
 
@@ -83,6 +84,12 @@ The initial CI failure was ShellCheck 0.9.0 treating callbacks invoked through `
 as unreachable. Only those callbacks have scoped `SC2317,SC2329` annotations; lint remains
 enabled for all scripts. Backup validation uses explicit `if` guards for `SC2015`.
 PR dependency review separately required enabling the dependency graph. The gates were retained.
+
+The full hosted browser run also exposed a mismatch between the documented MUI style CSP
+exception and ZAP's default nonzero exit for warnings. ZAP still records the warning; the
+report gate accepts only sub-alert `10055-6`, honors the existing documented ignores in
+`.zap/rules.tsv`, and rejects other findings or missing/incomplete reports. Other CSP alerts,
+including inline/eval scripts, fail the gate. Regression tests cover these refusal paths.
 
 Keep real `.env` files, credentials, databases, logs, private keys and personal recording notes
 out of Git and source ZIPs. `.env.example` and documented synthetic demo accounts are suitable

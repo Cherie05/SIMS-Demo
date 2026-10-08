@@ -118,6 +118,12 @@ the end-to-end job from starting. The callbacks now have scoped ShellCheck annot
 the conditionals use explicit guards. The same Ubuntu 24.04 ShellCheck version, six deployment
 tests and the encrypted-backup tests passed locally after this correction.
 Dependency graph was also enabled to support pull-request dependency review.
+The first correction PR's hosted run passed all 24 Chromium tests and all 14 acceptance tests
+in each of Firefox and WebKit. ZAP reported 63 passes, no failures and the already documented
+MUI inline-style warning, but its warning exit code stopped CI. A JSON report gate now accepts
+only that style sub-alert and the existing configured ignores, and rejects other findings or
+incomplete scan output; eight regression tests verify those paths. Check the current hosted
+run before treating this correction as merged.
 See the [live CI results](https://github.com/Cherie05/SIMS-Demo/actions/workflows/ci.yml) for the
 current commit and [repository setup](../github-repository-setup.md) for the applied protection.
 The application's code review is separate from completing these submission steps:
