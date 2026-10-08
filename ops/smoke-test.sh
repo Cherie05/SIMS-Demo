@@ -1,7 +1,7 @@
 #!/bin/sh
 # Post-deployment checks. SMOKE_INSECURE=1 accepts a local CA; SMOKE_HTTP_URL overrides the redirect URL.
-# Check invokes probe functions through its argument list.
-# shellcheck disable=SC2329
+# check invokes the probe functions indirectly through "$@". The annotations below
+# cover only those callbacks; ShellCheck cannot follow their indirect invocation.
 set -u
 BASE=${1:?usage: smoke-test.sh <public url>}
 BASE=${BASE%/}
@@ -25,20 +25,26 @@ check() {
     failures=$((failures + 1))
   fi
 }
+# shellcheck disable=SC2317,SC2329
 status_is() { [ "$(curl_request -o /dev/null -w '%{http_code}' "$1")" = "$2" ]; }
+# shellcheck disable=SC2317,SC2329
 has_header() {
   headers=$(curl_request -I "$1") || return 1
   printf '%s\n' "$headers" | grep -qi "^$2:"
 }
+# shellcheck disable=SC2317,SC2329
 api_answers() {
   body=$(curl_request -f "$BASE/api/v1/auth/config") || return 1
   printf '%s\n' "$body" | grep -q '"signup_enabled"'
 }
+# shellcheck disable=SC2317,SC2329
 codes_use_email() {
   body=$(curl_request -f "$BASE/api/v1/auth/config") || return 1
   printf '%s\n' "$body" | grep -Eq '"otp_delivery"[[:space:]]*:[[:space:]]*"email"'
 }
+# shellcheck disable=SC2317,SC2329
 docs_disabled() { status_is "$BASE/api/openapi.json" 404 && status_is "$BASE/api/docs" 404; }
+# shellcheck disable=SC2317,SC2329
 http_redirects() {
   case "$(curl_request -o /dev/null -w '%{http_code}' "$HTTP_URL/")" in
     301|302|307|308)
@@ -69,5 +75,9 @@ case "$BASE" in
     ;;
 esac
 
-[ "$failures" -eq 0 ] && echo "Smoke test passed" || echo "Smoke test failed ($failures)"
+if [ "$failures" -eq 0 ]; then
+  echo "Smoke test passed"
+else
+  echo "Smoke test failed ($failures)"
+fi
 exit "$failures"

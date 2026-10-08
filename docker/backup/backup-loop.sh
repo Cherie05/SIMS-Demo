@@ -3,9 +3,10 @@
 set -u
 : "${BACKUP_INTERVAL_SECONDS:=86400}"
 : "${BACKUP_DIR:=/backups}"
-[[ "$BACKUP_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] && [ "$BACKUP_INTERVAL_SECONDS" -ge 60 ] || {
-  echo "BACKUP_INTERVAL_SECONDS must be an integer of at least 60" >&2; exit 1;
-}
+if ! { [[ "$BACKUP_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] && [ "$BACKUP_INTERVAL_SECONDS" -ge 60 ]; }; then
+  echo "BACKUP_INTERVAL_SECONDS must be an integer of at least 60" >&2
+  exit 1
+fi
 DIR=$(dirname "$0")
 
 trap 'echo "{\"event\":\"backup.stopping\"}"; exit 0' TERM INT

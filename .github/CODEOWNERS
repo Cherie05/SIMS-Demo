@@ -1,13 +1,14 @@
-# Reviews required by branch protection on main (see docs/governance/engineering-standards.md).
-# Replace @arunvpp with your team handles, e.g. @company/sims-backend.
-*                                   @arunvpp
+# Route review requests to the repository owner. CODEOWNERS does not grant access.
+# Main requires a pull request and passing checks. With one maintainer, approvals
+# are optional; require another maintainer's review when the team grows.
+*                                   @Cherie05
 
-# Security-sensitive areas need a security reviewer as well
-/backend/app/core/                  @arunvpp
-/backend/app/api/deps.py            @arunvpp
-/backend/app/services/session_service.py @arunvpp
-/backend/app/services/mfa_service.py     @arunvpp
-/backend/alembic/versions/          @arunvpp
-/docker-compose*.yml                @arunvpp
-/docker/                            @arunvpp
-/.github/                           @arunvpp
+# Explicit ownership of security-sensitive areas
+/backend/app/core/                  @Cherie05
+/backend/app/api/deps.py            @Cherie05
+/backend/app/services/session_service.py @Cherie05
+/backend/app/services/mfa_service.py     @Cherie05
+/backend/alembic/versions/          @Cherie05
+/docker-compose*.yml                @Cherie05
+/docker/                            @Cherie05
+/.github/                           @Cherie05

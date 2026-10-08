@@ -158,8 +158,11 @@ Fixed by this check:
 
 ## Remaining deployment verification
 
-Hosted GitHub CI, CodeQL and the release workflow are configured but can only run after the
-repository is uploaded. Semgrep, ZAP and the Firefox/WebKit browser runs were executed locally
+The repository was uploaded on 8 October. Hosted CI results are available in
+[GitHub Actions](https://github.com/Cherie05/SIMS-Demo/actions), and the initial CodeQL run passed.
+The initial CI ShellCheck failure and its correction are recorded in
+[submission readiness](submission-readiness.md). The release workflow still requires configured
+deployment environments and credentials. Semgrep, ZAP and the Firefox/WebKit browser runs were executed locally
 in the second pass above. No public site, cloud HA service, SSO integration or compliance
 certification was provisioned by this work.
 

@@ -110,18 +110,32 @@ The refreshed 286-file ZIP passed archive integrity checks; all 17 PowerShell co
 in the Windows run guide passed syntax checks. Only documentation and Git preparation changed;
 the application test results above were not rerun during this preparation.
 
-The local `main` branch has an initial submission commit prepared for upload. No GitHub remote
-is configured yet, so no public repository or hosted CI result exists.
+The initial submission commit was uploaded to the public
+[Cherie05/SIMS-Demo repository](https://github.com/Cherie05/SIMS-Demo) on 8 October.
+The first hosted run passed backend, frontend, security scans, both container scans and CodeQL;
+ShellCheck 0.9.0 failed on indirect smoke-test callbacks and two backup conditionals, preventing
+the end-to-end job from starting. The callbacks now have scoped ShellCheck annotations and
+the conditionals use explicit guards. The same Ubuntu 24.04 ShellCheck version, six deployment
+tests and the encrypted-backup tests passed locally after this correction.
+Dependency graph was also enabled to support pull-request dependency review.
+The first correction PR's hosted run passed all 24 Chromium tests and all 14 acceptance tests
+in each of Firefox and WebKit. ZAP reported 63 passes, no failures and the already documented
+MUI inline-style warning, but its warning exit code stopped CI. A JSON report gate now accepts
+only that style sub-alert and the existing configured ignores, and rejects other findings or
+incomplete scan output; eight regression tests verify those paths. Check the current hosted
+run before treating this correction as merged.
+See the [live CI results](https://github.com/Cherie05/SIMS-Demo/actions/workflows/ci.yml) for the
+current commit and [repository setup](../github-repository-setup.md) for the applied protection.
 The application's code review is separate from completing these submission steps:
 
-1. Push the prepared `main` branch to a public GitHub repository and verify it can be cloned.
-2. Run hosted CI and check the clone's quick-start instructions.
+1. Verify the final `main` commit passes hosted CI and can be cloned publicly.
+2. Use the final commit's source-only ZIP and the clone's quick-start instructions.
 3. Provide the complete source ZIP and a Loom walkthrough of the order/email/approval/stock flow.
 4. Reply to HR with the repository, ZIP and Loom link before **8 October 2026, 4:00 PM**, as
-   stated in the supplied email. This review has not sent messages or published anything.
+   stated in the supplied email. This review has not sent HR messages.
 
 A hosted public website is not listed as a required submission item. If one is supplied,
 configure real HTTPS/domain settings, production secrets and real SMTP first; see
-[enterprise readiness](../enterprise-readiness.md). GitHub CI and native MySQL installation
-remain unverified in this review. Earlier deployment/security/performance checks are recorded
+[enterprise readiness](../enterprise-readiness.md). Native MySQL installation on this PC
+remains unverified in this review. Earlier deployment/security/performance checks are recorded
 in [the verification history](verification.md), separately from these freshly executed checks.
