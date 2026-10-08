@@ -23,7 +23,7 @@
     "@hookform/resolvers": "^3.10.0",
     "@mui/icons-material": "^6.5.0",
     "@mui/material": "^6.5.0",
-    "@mui/utils": "^6.4.9",
+    "@mui/utils": "^9.4.0",
     "@tanstack/react-query": "^5.104.1",
     "axios": "^1.20.0",
     "notistack": "^3.0.2",
