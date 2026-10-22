@@ -136,7 +136,7 @@ services:
 
   # Local SMTP server that captures every email. Inbox UI: http://localhost:8025
   mailpit:
-    image: axllent/mailpit:v1.31.4
+    image: axllent/mailpit:v1.31.6
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
