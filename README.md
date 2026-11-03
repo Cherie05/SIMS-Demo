@@ -591,3 +591,20 @@ boundaries. See the [current verification record](docs/qa/verification.md) for e
 - Reserve stock while an order is pending (today it is re-checked at approval instead)
 - Signed one-click approve/reject links in the email
 - CSV export and per-period reports
+
+
+
+
+## Support Continued Development
+
+This project is part of my independent open-source work.
+
+I build and share software because I believe useful technology should be accessible to people who want to learn, experiment, solve problems, and build upon existing ideas.
+
+Maintaining open-source projects requires continued development, testing, documentation, and improvements.
+
+If this project has helped you learn something, solve a problem, or develop your own work, you can support its continued development through GitHub Sponsors.
+
+Sponsorship is entirely voluntary. The software remains freely available regardless of whether you choose to contribute.
+
+**[Support my open-source work on GitHub Sponsors](https://github.com/sponsors/Cherie05)**
